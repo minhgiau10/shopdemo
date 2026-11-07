@@ -1,0 +1,38 @@
+services:
+  api-gateway:
+    build: ./apps/api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - product-service
+      - inventory-service
+      - order-service
+
+  auth-service:
+    build: ./apps/auth-service
+    expose:
+      - "8081"
+
+  product-service:
+    build: ./apps/product-service
+    expose:
+      - "8082"
+
+  inventory-service:
+    build: ./apps/inventory-service
+    expose:
+      - "8083"
+
+  order-service:
+    build: ./apps/order-service
+    expose:
+      - "8084"
+
+  user-interface:
+    build: ./frontend/user-interface
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+
