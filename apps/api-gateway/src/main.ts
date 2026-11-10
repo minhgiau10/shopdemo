@@ -18,6 +18,14 @@ async function bootstrap() {
     }),
   );
 
+  app.use(
+    '/auth',
+    createProxyMiddleware({
+      target: process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001',
+      changeOrigin: true,
+    }),
+  );
+
   await app.listen(process.env.PORT ?? 8080);
 }
 
