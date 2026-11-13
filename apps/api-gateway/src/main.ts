@@ -15,6 +15,7 @@ async function bootstrap() {
     createProxyMiddleware({
       target: process.env.PRODUCT_SERVICE_URL ?? 'http://localhost:3002',
       changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/products' : `/products${path}`),
     }),
   );
 
@@ -23,6 +24,7 @@ async function bootstrap() {
     createProxyMiddleware({
       target: process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001',
       changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/auth' : `/auth${path}`),
     }),
   );
 
