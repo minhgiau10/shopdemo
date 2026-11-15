@@ -28,12 +28,30 @@ async function bootstrap() {
     }),
   );
 
- app.use(
+  app.use(
     '/cart',
     createProxyMiddleware({
       target: process.env.CART_SERVICE_URL ?? 'http://localhost:3003',
       changeOrigin: true,
       pathRewrite: (path) => (path === '/' ? '/cart' : `/cart${path}`),
+    }),
+  );
+
+  app.use(
+    '/inventory',
+    createProxyMiddleware({
+      target: process.env.INVENTORY_SERVICE_URL ?? 'http://localhost:3004',
+      changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/inventory' : `/inventory${path}`),
+    }),
+  );
+
+  app.use(
+    '/orders',
+    createProxyMiddleware({
+      target: process.env.ORDER_SERVICE_URL ?? 'http://localhost:3005',
+      changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/orders' : `/orders${path}`),
     }),
   );
 
