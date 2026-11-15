@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 function RegisterForm() {
   const router = useRouter();
@@ -15,18 +18,68 @@ function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
+
+    if (!fullName.trim() || !email.trim() || !password) {
+      setErrorMessage("Vui lòng điền đầy đủ thông tin.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setErrorMessage("Mật khẩu xác nhận không khớp.");
       return;
     }
 
-    router.push(redirectUrl);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const msg = Array.isArray(data.message)
+          ? data.message[0]
+          : data.message || "Đăng ký thất bại. Vui lòng thử lại.";
+        setErrorMessage(msg);
+        return;
+      }
+
+      if (data.accessToken && data.user) {
+        localStorage.setItem("accessToken", data.accessToken);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        document.cookie = `accessToken=${data.accessToken}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+        document.cookie = `userRole=${data.user.role}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+
+        toast.success(`Đăng ký thành công! Chào mừng ${data.user.fullName || data.user.email}`);
+        router.push(redirectUrl);
+        router.refresh();
+      } else {
+        toast.success("Đăng ký tài khoản thành công! Vui lòng đăng nhập.");
+        const loginHref = `/login${redirectUrl !== "/" ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`;
+        router.push(loginHref);
+      }
+    } catch (error) {
+      console.error("Register error:", error);
+      setErrorMessage("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại API Gateway.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -50,10 +103,11 @@ function RegisterForm() {
             <input
               type="text"
               required
+              disabled={isLoading}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Nguyễn Văn A"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
           </div>
         </div>
@@ -65,10 +119,11 @@ function RegisterForm() {
             <input
               type="email"
               required
+              disabled={isLoading}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
           </div>
         </div>
@@ -81,10 +136,11 @@ function RegisterForm() {
               type={showPassword ? "text" : "password"}
               required
               minLength={6}
+              disabled={isLoading}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Tối thiểu 6 ký tự"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
             <button
               type="button"
@@ -103,20 +159,31 @@ function RegisterForm() {
             <input
               type={showPassword ? "text" : "password"}
               required
+              disabled={isLoading}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Nhập lại mật khẩu"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
           </div>
         </div>
 
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 shadow-sm"
+          disabled={isLoading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 shadow-sm disabled:cursor-not-allowed disabled:bg-blue-400"
         >
-          <span>Đăng ký tài khoản</span>
-          <ArrowRight className="h-4 w-4" />
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Đang tạo tài khoản...</span>
+            </>
+          ) : (
+            <>
+              <span>Đăng ký tài khoản</span>
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </button>
       </form>
 

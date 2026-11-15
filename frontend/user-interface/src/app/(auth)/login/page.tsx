@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 function LoginForm() {
   const router = useRouter();
@@ -13,9 +15,11 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
 
@@ -24,7 +28,49 @@ function LoginForm() {
       return;
     }
 
-    router.push(redirectUrl);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+       
+        const msg = Array.isArray(data.message)
+          ? data.message[0]
+          : data.message || "Email hoặc mật khẩu không chính xác.";
+        setErrorMessage(msg);
+        return;
+      }
+
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      const maxAge = rememberMe ? 60 * 60 * 24 * 7 : 60 * 60 * 24; // 7 ngày hoặc 1 ngày
+      document.cookie = `accessToken=${data.accessToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      document.cookie = `userRole=${data.user.role}; path=/; max-age=${maxAge}; SameSite=Lax`;
+
+      toast.success(`Xin chào, ${data.user.fullName || data.user.email}!`);
+      
+      if (data.user.role === "ADMIN" && redirectUrl === "/") {
+        router.push("/admin");
+      } else {
+        router.push(redirectUrl);
+      }
+      router.refresh();
+    } catch (error) {
+      console.error("Login error:", error);
+      setErrorMessage("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại API Gateway.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -48,10 +94,11 @@ function LoginForm() {
             <input
               type="email"
               required
+              disabled={isLoading}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
           </div>
         </div>
@@ -68,10 +115,11 @@ function LoginForm() {
             <input
               type={showPassword ? "text" : "password"}
               required
+              disabled={isLoading}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             />
             <button
               type="button"
@@ -87,6 +135,9 @@ function LoginForm() {
           <input
             id="remember-me"
             type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            disabled={isLoading}
             className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
           />
           <label htmlFor="remember-me" className="ml-2 block text-xs text-slate-600">
@@ -96,10 +147,20 @@ function LoginForm() {
 
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 shadow-sm"
+          disabled={isLoading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 shadow-sm disabled:cursor-not-allowed disabled:bg-blue-400"
         >
-          <span>Đăng nhập</span>
-          <ArrowRight className="h-4 w-4" />
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Đang đăng nhập...</span>
+            </>
+          ) : (
+            <>
+              <span>Đăng nhập</span>
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </button>
       </form>
 

@@ -28,6 +28,15 @@ async function bootstrap() {
     }),
   );
 
+ app.use(
+    '/cart',
+    createProxyMiddleware({
+      target: process.env.CART_SERVICE_URL ?? 'http://localhost:3003',
+      changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/cart' : `/cart${path}`),
+    }),
+  );
+
   await app.listen(process.env.PORT ?? 8080);
 }
 
