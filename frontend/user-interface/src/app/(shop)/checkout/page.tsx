@@ -1,64 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { 
-  ArrowLeft, 
-  CheckCircle2, 
-  CreditCard, 
-  Truck, 
-  QrCode, 
-  ShieldCheck, 
-  MapPin, 
-  User, 
-  Phone, 
+import { toast } from "sonner";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  CreditCard,
+  Truck,
+  QrCode,
+  ShieldCheck,
+  MapPin,
+  User,
+  Phone,
   Mail,
-  ReceiptText
+  ReceiptText,
 } from "lucide-react";
-import { Product } from "@/types/product";
-
-interface OrderItem {
-  product: Product;
-  quantity: number;
-}
-
-const CHECKOUT_ITEMS: OrderItem[] = [
-  {
-    product: {
-      id: "prod-1",
-      name: "Bàn phím cơ Custom Akko Mod007 v3",
-      description: "Layout 75%, Gasket mount",
-      price: 2450000,
-      brand: "Akko",
-      category: "Bàn phím",
-      imageUrl: "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=500&q=80",
-      isActive: true,
-      createdAt: new Date("2026-01-10"),
-      updatedAt: new Date("2026-02-15"),
-    },
-    quantity: 1,
-  },
-  {
-    product: {
-      id: "prod-2",
-      name: "Chuột không dây Logitech G Pro X Superlight",
-      description: "Cảm biến HERO 25K",
-      price: 2990000,
-      brand: "Logitech",
-      category: "Chuột",
-      imageUrl: "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=500&q=80",
-      isActive: true,
-      createdAt: new Date("2026-01-12"),
-      updatedAt: new Date("2026-02-20"),
-    },
-    quantity: 2,
-  },
-];
+import { useCart } from "@/context/CartContext";
+import { orderApi } from "@/services/order.service";
+import { paymentApi } from "@/services/payment.service";
+import { Order } from "@/types/order";
+import { PaymentMethod } from "@/types/payment";
 
 export default function CheckoutPage() {
+  const { cart, refreshCart } = useCart();
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "qr" | "vnpay">("cod");
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -69,19 +38,91 @@ export default function CheckoutPage() {
     note: "",
   });
 
-  const subtotal = CHECKOUT_ITEMS.reduce(
-    (total, item) => total + item.product.price * item.quantity,
+  // Tự động điền thông tin user đang đăng nhập (nếu có)
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        setFormData((prev) => ({
+          ...prev,
+          fullName: u.fullName || prev.fullName,
+          email: u.email || prev.email,
+        }));
+      } catch {
+        // Bỏ qua nếu parse lỗi
+      }
+    }
+  }, []);
+
+  const cartItems = cart?.items || [];
+
+  const subtotal = cartItems.reduce(
+    (total: number, item: any) => total + (item.price || 0) * item.quantity,
     0
   );
-  const shippingFee = subtotal > 3000000 ? 0 : 30000;
+  const shippingFee = subtotal > 3000000 || subtotal === 0 ? 0 : 30000;
   const totalPrice = subtotal + shippingFee;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSuccess(true);
+  const mapPaymentMethod = (method: "cod" | "qr" | "vnpay"): PaymentMethod => {
+    if (method === "vnpay") return "VNPAY";
+    if (method === "qr") return "PAYPAL"; // Dùng luồng callback nhanh của PaymentService để demo VietQR/Online
+    return "COD";
   };
 
-  if (isSuccess) {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cartItems.length === 0) {
+      toast.error("Giỏ hàng của bạn đang trống");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const backendMethod = mapPaymentMethod(paymentMethod);
+      const fullShippingAddress = `${formData.fullName} (${formData.phone}) - ${formData.address}, ${formData.city}`;
+
+      // 1. Gọi Order Service tạo đơn hàng & giữ kho bên Inventory Service
+      const order = await orderApi.createOrder({
+        shippingAddress: fullShippingAddress,
+        paymentMethod: backendMethod,
+        note: formData.note || undefined,
+        items: cartItems.map((item: any) => ({
+          productId: item.productId || item.product?.id,
+          sku: item.sku || item.product?.sku,
+          productName: item.productName || item.name || item.product?.name || "Sản phẩm",
+          price: item.price || item.product?.price || 0,
+          quantity: item.quantity,
+        })),
+      });
+
+      // 2. Gọi Payment Service khởi tạo giao dịch
+      const payment = await paymentApi.createPayment({
+        orderId: order.id,
+        amount: order.totalAmount,
+        method: backendMethod,
+      });
+
+      await refreshCart();
+
+      // 3. Nếu thanh toán online (VNPay / VietQR) -> chuyển sang URL thanh toán
+      if (payment.paymentUrl) {
+        toast.info("Đang chuyển hướng sang cổng thanh toán...");
+        window.location.href = payment.paymentUrl;
+        return;
+      }
+
+      // 4. Nếu COD -> hiện màn hình biên nhận thành công
+      setCreatedOrder(order);
+      toast.success("Đặt hàng thành công!");
+    } catch (err: any) {
+      toast.error(err.message || "Có lỗi xảy ra khi đặt hàng");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (createdOrder) {
     return (
       <div className="mx-auto flex max-w-xl flex-col items-center justify-center px-4 py-16 text-center sm:px-6">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
@@ -92,44 +133,51 @@ export default function CheckoutPage() {
         </h1>
         <p className="mt-2 text-sm text-slate-500">
           Cảm ơn bạn đã mua sắm tại ShopDemo. Mã đơn hàng của bạn là{" "}
-          <span className="font-semibold text-slate-800">#DH-849204</span>.
+          <span className="font-mono font-semibold text-slate-800">
+            #{createdOrder.id.slice(-8).toUpperCase()}
+          </span>
+          .
         </p>
 
-        <div className="mt-6 w-full rounded-2xl border border-slate-200 bg-white p-5 text-left text-sm shadow-sm space-y-3">
+        <div className="mt-6 w-full space-y-3 rounded-2xl border border-slate-200 bg-white p-5 text-left text-sm shadow-sm">
           <div className="flex justify-between border-b border-slate-100 pb-2">
             <span className="text-slate-500">Người nhận:</span>
-            <span className="font-semibold text-slate-800">{formData.fullName || "Nguyễn Văn A"}</span>
+            <span className="font-semibold text-slate-800">{formData.fullName}</span>
           </div>
           <div className="flex justify-between border-b border-slate-100 pb-2">
             <span className="text-slate-500">Số điện thoại:</span>
-            <span className="font-medium text-slate-800">{formData.phone || "0987654321"}</span>
+            <span className="font-medium text-slate-800">{formData.phone}</span>
           </div>
           <div className="flex justify-between border-b border-slate-100 pb-2">
             <span className="text-slate-500">Địa chỉ giao:</span>
-            <span className="font-medium text-slate-800">{formData.address || "123 Đường Số 1"}, {formData.city}</span>
+            <span className="font-medium text-slate-800">
+              {formData.address}, {formData.city}
+            </span>
           </div>
           <div className="flex justify-between border-b border-slate-100 pb-2">
             <span className="text-slate-500">Phương thức:</span>
-            <span className="font-medium text-blue-600 uppercase">{paymentMethod}</span>
+            <span className="font-medium uppercase text-blue-600">{paymentMethod}</span>
           </div>
           <div className="flex justify-between pt-1 text-base font-bold text-slate-900">
             <span>Tổng thanh toán:</span>
-            <span className="text-blue-600">{totalPrice.toLocaleString("vi-VN")} ₫</span>
+            <span className="text-blue-600">
+              {createdOrder.totalAmount.toLocaleString("vi-VN")} ₫
+            </span>
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col sm:flex-row gap-3 w-full">
+        <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row">
           <Link
-            href="/"
+            href="/orders"
             className="flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
-            Tiếp tục mua hàng
+            Theo dõi đơn hàng
           </Link>
           <Link
-            href="/cart"
-            className="rounded-xl border border-slate-200 bg-white py-3 px-6 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            href="/"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            Xem giỏ hàng
+            Tiếp tục mua hàng
           </Link>
         </div>
       </div>
@@ -140,7 +188,7 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <Link
         href="/cart"
-        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition"
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
         <span>Quay lại giỏ hàng</span>
@@ -166,11 +214,13 @@ export default function CheckoutPage() {
                 <span>Địa chỉ nhận hàng</span>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Họ và tên *</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    Họ và tên *
+                  </label>
                   <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       required
@@ -182,9 +232,11 @@ export default function CheckoutPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Số điện thoại *</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    Số điện thoại *
+                  </label>
                   <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="tel"
                       required
@@ -196,13 +248,13 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Email nhận thông báo</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    Email nhận thông báo
+                  </label>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="email"
-                     
-
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
@@ -211,27 +263,27 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Địa chỉ cụ thể (Số nhà, đường, phường/xã) *</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    Địa chỉ cụ thể (Số nhà, đường, phường/xã) *
+                  </label>
                   <input
                     type="text"
                     required
-                  
-                    
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Ghi chú cho đơn vị vận chuyển</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    Ghi chú cho đơn vị vận chuyển
+                  </label>
                   <textarea
                     rows={2}
-                
-                    
                     value={formData.note}
                     onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
               </div>
@@ -256,8 +308,12 @@ export default function CheckoutPage() {
                   <div className="flex items-center gap-3">
                     <Truck className="h-5 w-5 text-blue-600" />
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Thanh toán khi nhận hàng (COD)</p>
-                      <p className="text-xs text-slate-500">Kiểm tra hàng trước khi thanh toán tiền mặt</p>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Thanh toán khi nhận hàng (COD)
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Kiểm tra hàng trước khi thanh toán tiền mặt
+                      </p>
                     </div>
                   </div>
                   <input
@@ -280,8 +336,12 @@ export default function CheckoutPage() {
                   <div className="flex items-center gap-3">
                     <QrCode className="h-5 w-5 text-blue-600" />
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Chuyển khoản VietQR</p>
-                      <p className="text-xs text-slate-500">Quét mã QR qua ứng dụng ngân hàng bất kỳ</p>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Chuyển khoản VietQR
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Quét mã QR qua ứng dụng ngân hàng bất kỳ
+                      </p>
                     </div>
                   </div>
                   <input
@@ -304,8 +364,12 @@ export default function CheckoutPage() {
                   <div className="flex items-center gap-3">
                     <CreditCard className="h-5 w-5 text-blue-600" />
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Cổng thanh toán VNPay</p>
-                      <p className="text-xs text-slate-500">Thẻ ATM nội địa, Visa, Mastercard, JCB</p>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Cổng thanh toán VNPay
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Thẻ ATM nội địa, Visa, Mastercard, JCB
+                      </p>
                     </div>
                   </div>
                   <input
@@ -325,41 +389,50 @@ export default function CheckoutPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3 text-base font-bold text-slate-900">
                 <ReceiptText className="h-5 w-5 text-blue-600" />
-                <span>Đơn hàng ({CHECKOUT_ITEMS.length} món)</span>
+                <span>Đơn hàng ({cartItems.length} món)</span>
               </div>
 
-              <div className="mt-4 divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
-                {CHECKOUT_ITEMS.map(({ product, quantity }) => (
-                  <div key={product.id} className="flex items-center gap-3 py-3">
-                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                      {product.imageUrl ? (
-                        <Image
-                          src={product.imageUrl}
-                          alt={product.name}
-                          fill
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">
-                          Ảnh
+              {cartItems.length === 0 ? (
+                <p className="py-6 text-center text-xs text-slate-400">
+                  Giỏ hàng đang trống
+                </p>
+              ) : (
+                <div className="mt-4 max-h-72 divide-y divide-slate-100 overflow-y-auto pr-1">
+                  {cartItems.map((item: any, idx: number) => {
+                    const name = item.productName || item.name || item.product?.name || "Sản phẩm";
+                    const price = item.price || item.product?.price || 0;
+                    const img = item.imageUrl || item.image || item.product?.imageUrl;
+
+                    return (
+                      <div key={item.productId || idx} className="flex items-center gap-3 py-3">
+                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                          {img ? (
+                            <Image src={img} alt={name} fill className="object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">
+                              Ảnh
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-800">{product.name}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">SL: x{quantity}</p>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 whitespace-nowrap">
-                      {(product.price * quantity).toLocaleString("vi-VN")} ₫
-                    </span>
-                  </div>
-                ))}
-              </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-slate-800">{name}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">SL: x{item.quantity}</p>
+                        </div>
+                        <span className="whitespace-nowrap text-xs font-bold text-slate-900">
+                          {(price * item.quantity).toLocaleString("vi-VN")} ₫
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-              <div className="mt-4 border-t border-slate-100 pt-4 space-y-2.5 text-sm">
+              <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-4 text-sm">
                 <div className="flex justify-between text-slate-600">
                   <span>Tạm tính</span>
-                  <span className="font-medium text-slate-900">{subtotal.toLocaleString("vi-VN")} ₫</span>
+                  <span className="font-medium text-slate-900">
+                    {subtotal.toLocaleString("vi-VN")} ₫
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>Phí vận chuyển</span>
@@ -367,7 +440,7 @@ export default function CheckoutPage() {
                     {shippingFee === 0 ? "Miễn phí" : `${shippingFee.toLocaleString("vi-VN")} ₫`}
                   </span>
                 </div>
-                <div className="border-t border-slate-100 pt-3 flex justify-between items-baseline">
+                <div className="flex items-baseline justify-between border-t border-slate-100 pt-3">
                   <span className="text-sm font-semibold text-slate-900">Tổng thanh toán</span>
                   <span className="text-xl font-extrabold text-blue-600">
                     {totalPrice.toLocaleString("vi-VN")} ₫
@@ -377,9 +450,10 @@ export default function CheckoutPage() {
 
               <button
                 type="submit"
-                className="mt-6 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                disabled={submitting || cartItems.length === 0}
+                className="mt-6 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
               >
-                Xác nhận đặt hàng
+                {submitting ? "Đang xử lý đơn hàng..." : "Xác nhận đặt hàng"}
               </button>
 
               <div className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-slate-400">

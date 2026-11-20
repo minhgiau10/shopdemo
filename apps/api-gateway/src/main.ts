@@ -55,6 +55,15 @@ async function bootstrap() {
     }),
   );
 
+  app.use(
+    '/payments',
+    createProxyMiddleware({
+      target: process.env.PAYMENT_SERVICE_URL ?? 'http://localhost:3006',
+      changeOrigin: true,
+      pathRewrite: (path) => (path === '/' ? '/payments' : `/payments${path}`),
+    }),
+  );
+
   await app.listen(process.env.PORT ?? 8080);
 }
 
