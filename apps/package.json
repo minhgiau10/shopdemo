@@ -1,0 +1,24 @@
+{
+  "name": "apps",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently -k --names \"GATEWAY,AUTH,CART,INVENTORY,ORDER,PAYMENT,PRODUCT\" -c \"cyan,green,yellow,magenta,blue,white,gray\" \"npm:dev:*\"",
+    "dev:gateway": "npm --prefix ./api-gateway run start:dev",
+    "dev:auth": "npm --prefix ./auth-service run start:dev",
+    "dev:cart": "npm --prefix ./cart-service run start:dev",
+    "dev:inventory": "npm --prefix ./inventory-service run start:dev",
+    "dev:order": "npm --prefix ./order-service run start:dev",
+    "dev:payment": "npm --prefix ./payment-service run start:dev",
+    "dev:product": "npm --prefix ./product-service run start:dev"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}
