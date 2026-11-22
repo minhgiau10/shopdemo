@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: "standalone",
   turbopack: {
     rules: {
       "*.css": {
@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  
   images: {
     remotePatterns: [
       {

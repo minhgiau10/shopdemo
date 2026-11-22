@@ -1,0 +1,23 @@
+$ignoreContent = @"
+**/node_modules
+node_modules
+**/.next
+.next
+**/dist
+dist
+**/build
+build
+coverage
+*.tsbuildinfo
+.git
+.gitignore
+.vscode
+.idea
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+**/.env
+.env*
+"@
+
