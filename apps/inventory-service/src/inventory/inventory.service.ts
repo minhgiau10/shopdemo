@@ -27,7 +27,9 @@ export class InventoryService {
       where: { productId },
     });
     if (!stock) {
-      throw new NotFoundException(`Chưa có dữ liệu kho cho sản phẩm ${productId}`);
+      throw new NotFoundException(
+        `Chưa có dữ liệu kho cho sản phẩm ${productId}`,
+      );
     }
     return {
       ...stock,
@@ -41,7 +43,9 @@ export class InventoryService {
       update: {
         availableQuantity: { increment: dto.quantity },
         ...(dto.sku && { sku: dto.sku }),
-        ...(dto.warehouseLocation && { warehouseLocation: dto.warehouseLocation }),
+        ...(dto.warehouseLocation && {
+          warehouseLocation: dto.warehouseLocation,
+        }),
         ...(dto.lowStockThreshold !== undefined && {
           lowStockThreshold: dto.lowStockThreshold,
         }),
@@ -62,7 +66,10 @@ export class InventoryService {
       where: { orderId: dto.orderId },
     });
     if (existing) {
-      return { message: 'Đơn hàng đã được giữ kho trước đó', reservation: existing };
+      return {
+        message: 'Đơn hàng đã được giữ kho trước đó',
+        reservation: existing,
+      };
     }
 
     const reservedSuccess: ReserveItemDto[] = [];
@@ -121,7 +128,9 @@ export class InventoryService {
     });
 
     if (!reservation) {
-      throw new NotFoundException(`Không tìm thấy phiếu giữ kho cho đơn ${orderId}`);
+      throw new NotFoundException(
+        `Không tìm thấy phiếu giữ kho cho đơn ${orderId}`,
+      );
     }
 
     if (reservation.status === 'CONFIRMED') {
@@ -129,7 +138,9 @@ export class InventoryService {
     }
 
     if (reservation.status !== 'RESERVED') {
-      throw new BadRequestException(`Không thể xác nhận phiếu ở trạng thái ${reservation.status}`);
+      throw new BadRequestException(
+        `Không thể xác nhận phiếu ở trạng thái ${reservation.status}`,
+      );
     }
 
     const items = reservation.items as unknown as ReserveItemDto[];
@@ -156,11 +167,15 @@ export class InventoryService {
     });
 
     if (!reservation) {
-      throw new NotFoundException(`Không tìm thấy phiếu giữ kho cho đơn ${orderId}`);
+      throw new NotFoundException(
+        `Không tìm thấy phiếu giữ kho cho đơn ${orderId}`,
+      );
     }
 
     if (reservation.status !== 'RESERVED') {
-      return { message: `Trạng thái phiếu đang là ${reservation.status}, không thể nhả kho` };
+      return {
+        message: `Trạng thái phiếu đang là ${reservation.status}, không thể nhả kho`,
+      };
     }
 
     const items = reservation.items as unknown as ReserveItemDto[];
