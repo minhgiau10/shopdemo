@@ -109,7 +109,6 @@ describe('AuthService', () => {
         email: 'test@example.com',
         password: '123456',
       });
-      console.log(result);
 
       expect(result.message).toBe('Login successful');
       expect(result.accessToken).toBe('mock-access-token');
