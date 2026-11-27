@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
-import { PaymentModule } from './payment/payment.module.js';
+import { PaymentModule } from './payments/payment.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 
 @Module({
